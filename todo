@@ -1,1 +1,4 @@
-- resource types
+- drift detection
+- observability
+- gitops
+- policy management (mutation, validation)
