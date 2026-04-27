@@ -33,6 +33,55 @@ func setupTestServer(t *testing.T) *httptest.Server {
 	return httptest.NewServer(mux)
 }
 
+const pgResourceTypeYAML = `apiVersion: dcm.io/v1alpha1
+kind: ResourceType
+metadata:
+  name: database.postgresql
+spec:
+  version: "1.0.0"
+  lifecycle: stable
+  schema:
+    type: object
+    required:
+      - size
+    properties:
+      size:
+        type: string
+        enum: ["XS", "S", "M", "L", "XL"]
+        default: "S"
+      storageGB:
+        type: integer
+        minimum: 10
+        maximum: 10000
+        default: 50
+      multiAZ:
+        type: boolean
+        default: false
+      host:
+        type: string
+        readOnly: true
+      port:
+        type: integer
+        readOnly: true
+      connectionString:
+        type: string
+        readOnly: true
+`
+
+// registerPostgresType registers the database.postgresql ResourceType for tests
+// that need to create Applications referencing it.
+func registerPostgresType(t *testing.T, ts *httptest.Server) {
+	t.Helper()
+	resp, err := http.Post(ts.URL+"/apis/dcm.io/v1alpha1/resourcetypes", "application/yaml", strings.NewReader(pgResourceTypeYAML))
+	if err != nil {
+		t.Fatalf("register ResourceType: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("register ResourceType: got %d", resp.StatusCode)
+	}
+}
+
 const appYAML = `apiVersion: dcm.io/v1alpha1
 kind: Application
 metadata:
@@ -59,6 +108,7 @@ const appJSON = `{
 func TestCreateAndGetApplication(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.Close()
+	registerPostgresType(t, ts)
 
 	// Create via YAML
 	resp, err := http.Post(ts.URL+"/apis/dcm.io/v1alpha1/applications", "application/yaml", strings.NewReader(appYAML))
@@ -101,6 +151,7 @@ func TestCreateAndGetApplication(t *testing.T) {
 func TestCreateApplicationJSON(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.Close()
+	registerPostgresType(t, ts)
 
 	resp, err := http.Post(ts.URL+"/apis/dcm.io/v1alpha1/applications", "application/json", strings.NewReader(appJSON))
 	if err != nil {
@@ -117,6 +168,7 @@ func TestCreateApplicationJSON(t *testing.T) {
 func TestCreateDuplicate(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.Close()
+	registerPostgresType(t, ts)
 
 	// First create
 	resp, _ := http.Post(ts.URL+"/apis/dcm.io/v1alpha1/applications", "application/yaml", strings.NewReader(appYAML))
@@ -152,6 +204,7 @@ func TestGetNotFound(t *testing.T) {
 func TestListApplications(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.Close()
+	registerPostgresType(t, ts)
 
 	// Create two apps
 	for _, name := range []string{"app-a", "app-b"} {
@@ -191,6 +244,7 @@ func TestListApplications(t *testing.T) {
 func TestUpdateApplication(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.Close()
+	registerPostgresType(t, ts)
 
 	// Create
 	resp, _ := http.Post(ts.URL+"/apis/dcm.io/v1alpha1/applications", "application/yaml", strings.NewReader(appYAML))
@@ -223,6 +277,7 @@ func TestUpdateApplication(t *testing.T) {
 func TestUpdateConflict(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.Close()
+	registerPostgresType(t, ts)
 
 	// Create
 	resp, _ := http.Post(ts.URL+"/apis/dcm.io/v1alpha1/applications", "application/yaml", strings.NewReader(appYAML))
@@ -266,6 +321,7 @@ func TestUpdateMissingRevision(t *testing.T) {
 func TestUpdateNameMismatch(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.Close()
+	registerPostgresType(t, ts)
 
 	// Create
 	resp, _ := http.Post(ts.URL+"/apis/dcm.io/v1alpha1/applications", "application/yaml", strings.NewReader(appYAML))
@@ -291,6 +347,7 @@ func TestUpdateNameMismatch(t *testing.T) {
 func TestDeleteApplication(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.Close()
+	registerPostgresType(t, ts)
 
 	// Create
 	resp, _ := http.Post(ts.URL+"/apis/dcm.io/v1alpha1/applications", "application/yaml", strings.NewReader(appYAML))
@@ -322,6 +379,7 @@ func TestDeleteApplication(t *testing.T) {
 func TestDeleteConflict(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.Close()
+	registerPostgresType(t, ts)
 
 	// Create
 	resp, _ := http.Post(ts.URL+"/apis/dcm.io/v1alpha1/applications", "application/yaml", strings.NewReader(appYAML))
@@ -345,6 +403,7 @@ func TestDeleteConflict(t *testing.T) {
 func TestGetYAMLResponse(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.Close()
+	registerPostgresType(t, ts)
 
 	// Create
 	resp, _ := http.Post(ts.URL+"/apis/dcm.io/v1alpha1/applications", "application/yaml", strings.NewReader(appYAML))
@@ -573,6 +632,7 @@ spec:
 func TestValidationOnUpdate(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.Close()
+	registerPostgresType(t, ts)
 
 	// Create valid app
 	resp, _ := http.Post(ts.URL+"/apis/dcm.io/v1alpha1/applications", "application/yaml", strings.NewReader(appYAML))
@@ -607,9 +667,145 @@ func TestInvalidBody(t *testing.T) {
 	}
 }
 
+func TestSchemaValidationEndToEnd(t *testing.T) {
+	ts := setupTestServer(t)
+	defer ts.Close()
+
+	// 1. Register a ResourceType
+	rtYAML := `apiVersion: dcm.io/v1alpha1
+kind: ResourceType
+metadata:
+  name: database.postgresql
+spec:
+  version: "1.0.0"
+  lifecycle: stable
+  schema:
+    type: object
+    required:
+      - size
+    properties:
+      size:
+        type: string
+        enum: ["S", "M", "L"]
+      storageGB:
+        type: integer
+        minimum: 10
+        maximum: 10000
+      host:
+        type: string
+        readOnly: true
+`
+	resp, _ := http.Post(ts.URL+"/apis/dcm.io/v1alpha1/resourcetypes", "application/yaml", strings.NewReader(rtYAML))
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create RT: got %d", resp.StatusCode)
+	}
+
+	// 2. Create Application with valid properties — should succeed
+	validAppYAML := `apiVersion: dcm.io/v1alpha1
+kind: Application
+metadata:
+  name: good-app
+spec:
+  resources:
+    - type: database.postgresql
+      name: db
+      properties:
+        size: M
+        storageGB: 100
+`
+	resp, _ = http.Post(ts.URL+"/apis/dcm.io/v1alpha1/applications", "application/yaml", strings.NewReader(validAppYAML))
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create valid app: got %d, body: %s", resp.StatusCode, body)
+	}
+
+	// 3. Create Application with invalid enum — should fail
+	badEnumYAML := `apiVersion: dcm.io/v1alpha1
+kind: Application
+metadata:
+  name: bad-enum-app
+spec:
+  resources:
+    - type: database.postgresql
+      name: db
+      properties:
+        size: XXL
+`
+	resp, _ = http.Post(ts.URL+"/apis/dcm.io/v1alpha1/applications", "application/yaml", strings.NewReader(badEnumYAML))
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bad enum: got %d, want 400", resp.StatusCode)
+	}
+
+	// 4. Create Application setting readOnly property — should fail
+	readOnlyYAML := `apiVersion: dcm.io/v1alpha1
+kind: Application
+metadata:
+  name: readonly-app
+spec:
+  resources:
+    - type: database.postgresql
+      name: db
+      properties:
+        size: S
+        host: "hacker.example.com"
+`
+	resp, _ = http.Post(ts.URL+"/apis/dcm.io/v1alpha1/applications", "application/yaml", strings.NewReader(readOnlyYAML))
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("readOnly: got %d, want 400", resp.StatusCode)
+	}
+
+	// 5. Create Application with storageGB below minimum — should fail
+	belowMinYAML := `apiVersion: dcm.io/v1alpha1
+kind: Application
+metadata:
+  name: belowmin-app
+spec:
+  resources:
+    - type: database.postgresql
+      name: db
+      properties:
+        size: S
+        storageGB: 5
+`
+	resp, _ = http.Post(ts.URL+"/apis/dcm.io/v1alpha1/applications", "application/yaml", strings.NewReader(belowMinYAML))
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("below min: got %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestSchemaValidationUnknownResourceType(t *testing.T) {
+	ts := setupTestServer(t)
+	defer ts.Close()
+
+	// Create app referencing unregistered resource type
+	appYAML := `apiVersion: dcm.io/v1alpha1
+kind: Application
+metadata:
+  name: unknown-type-app
+spec:
+  resources:
+    - type: cache.redis
+      name: cache
+      properties:
+        memoryGB: 4
+`
+	resp, _ := http.Post(ts.URL+"/apis/dcm.io/v1alpha1/applications", "application/yaml", strings.NewReader(appYAML))
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("unknown type: got %d, want 400, body: %s", resp.StatusCode, body)
+	}
+}
+
 func TestFullLifecycle(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.Close()
+	registerPostgresType(t, ts)
 
 	url := ts.URL + "/apis/dcm.io/v1alpha1/applications"
 

@@ -1,10 +1,12 @@
 package api
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/dcm-io/dcm/pkg/apis/v1alpha1"
 	"github.com/dcm-io/dcm/pkg/repository"
+	"github.com/dcm-io/dcm/pkg/schema"
 	"github.com/dcm-io/dcm/pkg/store"
 	"github.com/dcm-io/dcm/pkg/validation"
 )
@@ -14,10 +16,12 @@ const basePath = "/apis/dcm.io/v1alpha1"
 // RegisterRoutes creates repositories for all resource types and registers
 // their CRUD handlers on the given mux.
 func RegisterRoutes(mux *http.ServeMux, s store.Store) {
+	rtRepo := repository.New[*v1alpha1.ResourceType](s, repository.ResourceTypeKey, repository.ResourceTypePrefix())
+
 	registerHandlers(mux, "applications", NewHandler(
 		repository.New[*v1alpha1.Application](s, repository.ApplicationKey, repository.ApplicationPrefix()),
 		v1alpha1.KindApplication,
-		func(app *v1alpha1.Application) error { return validation.ValidateApplication(app).Error() },
+		applicationValidator(rtRepo),
 	))
 	registerHandlers(mux, "environments", NewHandler(
 		repository.New[*v1alpha1.Environment](s, repository.EnvironmentKey, repository.EnvironmentPrefix()),
@@ -25,7 +29,7 @@ func RegisterRoutes(mux *http.ServeMux, s store.Store) {
 		func(env *v1alpha1.Environment) error { return validation.ValidateEnvironment(env).Error() },
 	))
 	registerHandlers(mux, "resourcetypes", NewHandler(
-		repository.New[*v1alpha1.ResourceType](s, repository.ResourceTypeKey, repository.ResourceTypePrefix()),
+		rtRepo,
 		v1alpha1.KindResourceType,
 		func(rt *v1alpha1.ResourceType) error { return validation.ValidateResourceType(rt).Error() },
 	))
@@ -39,6 +43,40 @@ func RegisterRoutes(mux *http.ServeMux, s store.Store) {
 		v1alpha1.KindPlacementPolicy,
 		func(pp *v1alpha1.PlacementPolicy) error { return validation.ValidatePlacementPolicy(pp).Error() },
 	))
+}
+
+// applicationValidator returns a validator that performs both structural and
+// schema validation for Applications. Schema validation loads registered
+// ResourceTypes from the store to validate properties against their schemas.
+func applicationValidator(rtRepo *repository.Repository[*v1alpha1.ResourceType]) ValidatorFunc[*v1alpha1.Application] {
+	return func(app *v1alpha1.Application) error {
+		// Structural validation first
+		if err := validation.ValidateApplication(app).Error(); err != nil {
+			return err
+		}
+
+		// Collect unique resource types needed
+		typeNames := make(map[string]bool)
+		for _, res := range app.Spec.Resources {
+			typeNames[res.Type] = true
+		}
+
+		// Load ResourceTypes from store
+		types := make(map[string]*v1alpha1.ResourceType)
+		for name := range typeNames {
+			rt, _, err := rtRepo.Get(context.Background(), name)
+			if err != nil {
+				return err
+			}
+			// rt may be nil (not found) — schema.ValidateApplication handles that
+			if rt != nil {
+				types[name] = rt
+			}
+		}
+
+		// Schema validation
+		return schema.ValidateApplication(app, types)
+	}
 }
 
 type routeRegistrar interface {
