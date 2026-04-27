@@ -494,6 +494,108 @@ spec:
 	}
 }
 
+func TestValidationRejectsInvalidApplication(t *testing.T) {
+	ts := setupTestServer(t)
+	defer ts.Close()
+
+	// Missing resources
+	invalidApp := `apiVersion: dcm.io/v1alpha1
+kind: Application
+metadata:
+  name: bad-app
+spec:
+  resources: []
+`
+	resp, _ := http.Post(ts.URL+"/apis/dcm.io/v1alpha1/applications", "application/yaml", strings.NewReader(invalidApp))
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status: got %d, want %d, body: %s", resp.StatusCode, http.StatusBadRequest, body)
+	}
+
+	var apiErr struct{ Error string }
+	json.NewDecoder(resp.Body).Decode(&apiErr)
+	if !strings.Contains(apiErr.Error, "at least one resource") {
+		t.Errorf("error should mention resources, got: %s", apiErr.Error)
+	}
+}
+
+func TestValidationRejectsInvalidEnvironment(t *testing.T) {
+	ts := setupTestServer(t)
+	defer ts.Close()
+
+	invalidEnv := `apiVersion: dcm.io/v1alpha1
+kind: Environment
+metadata:
+  name: bad-env
+spec:
+  type: mainframe
+  connection:
+    endpoint: "not-a-url"
+    credentialRef: ""
+  capabilities:
+    resourceTypes: []
+  sovereignty:
+    country: GERMANY
+    region: ""
+    jurisdiction: ""
+    dataClassification: top-secret
+`
+	resp, _ := http.Post(ts.URL+"/apis/dcm.io/v1alpha1/environments", "application/yaml", strings.NewReader(invalidEnv))
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status: got %d, want %d, body: %s", resp.StatusCode, http.StatusBadRequest, body)
+	}
+}
+
+func TestValidationRejectsInvalidResourceType(t *testing.T) {
+	ts := setupTestServer(t)
+	defer ts.Close()
+
+	invalidRT := `apiVersion: dcm.io/v1alpha1
+kind: ResourceType
+metadata:
+  name: nodot
+spec:
+  version: "bad"
+  lifecycle: "beta"
+  schema:
+    type: array
+`
+	resp, _ := http.Post(ts.URL+"/apis/dcm.io/v1alpha1/resourcetypes", "application/yaml", strings.NewReader(invalidRT))
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status: got %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+}
+
+func TestValidationOnUpdate(t *testing.T) {
+	ts := setupTestServer(t)
+	defer ts.Close()
+
+	// Create valid app
+	resp, _ := http.Post(ts.URL+"/apis/dcm.io/v1alpha1/applications", "application/yaml", strings.NewReader(appYAML))
+	rev := resp.Header.Get("X-DCM-Revision")
+	resp.Body.Close()
+
+	// Update with invalid data (empty resources)
+	invalidUpdate := `apiVersion: dcm.io/v1alpha1
+kind: Application
+metadata:
+  name: test-app
+spec:
+  resources: []
+`
+	req, _ := http.NewRequest("PUT", ts.URL+"/apis/dcm.io/v1alpha1/applications/test-app", strings.NewReader(invalidUpdate))
+	req.Header.Set("X-DCM-Revision", rev)
+	resp, _ = http.DefaultClient.Do(req)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status: got %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+}
+
 func TestInvalidBody(t *testing.T) {
 	ts := setupTestServer(t)
 	defer ts.Close()

@@ -6,6 +6,7 @@ import (
 	"github.com/dcm-io/dcm/pkg/apis/v1alpha1"
 	"github.com/dcm-io/dcm/pkg/repository"
 	"github.com/dcm-io/dcm/pkg/store"
+	"github.com/dcm-io/dcm/pkg/validation"
 )
 
 const basePath = "/apis/dcm.io/v1alpha1"
@@ -16,22 +17,27 @@ func RegisterRoutes(mux *http.ServeMux, s store.Store) {
 	registerHandlers(mux, "applications", NewHandler(
 		repository.New[*v1alpha1.Application](s, repository.ApplicationKey, repository.ApplicationPrefix()),
 		v1alpha1.KindApplication,
+		func(app *v1alpha1.Application) error { return validation.ValidateApplication(app).Error() },
 	))
 	registerHandlers(mux, "environments", NewHandler(
 		repository.New[*v1alpha1.Environment](s, repository.EnvironmentKey, repository.EnvironmentPrefix()),
 		v1alpha1.KindEnvironment,
+		func(env *v1alpha1.Environment) error { return validation.ValidateEnvironment(env).Error() },
 	))
 	registerHandlers(mux, "resourcetypes", NewHandler(
 		repository.New[*v1alpha1.ResourceType](s, repository.ResourceTypeKey, repository.ResourceTypePrefix()),
 		v1alpha1.KindResourceType,
+		func(rt *v1alpha1.ResourceType) error { return validation.ValidateResourceType(rt).Error() },
 	))
 	registerHandlers(mux, "recipes", NewHandler(
 		repository.New[*v1alpha1.Recipe](s, repository.RecipeKey, repository.RecipePrefix()),
 		v1alpha1.KindRecipe,
+		func(r *v1alpha1.Recipe) error { return validation.ValidateRecipe(r).Error() },
 	))
 	registerHandlers(mux, "placementpolicies", NewHandler(
 		repository.New[*v1alpha1.PlacementPolicy](s, repository.PlacementPolicyKey, repository.PlacementPolicyPrefix()),
 		v1alpha1.KindPlacementPolicy,
+		func(pp *v1alpha1.PlacementPolicy) error { return validation.ValidatePlacementPolicy(pp).Error() },
 	))
 }
 

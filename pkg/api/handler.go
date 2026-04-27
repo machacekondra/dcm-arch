@@ -14,15 +14,24 @@ import (
 	"github.com/dcm-io/dcm/pkg/repository"
 )
 
+// ValidatorFunc validates a decoded object and returns an error if invalid.
+type ValidatorFunc[T meta.Object] func(T) error
+
 // Handler provides HTTP CRUD handlers for a specific DCM resource type.
 type Handler[T meta.Object] struct {
-	repo *repository.Repository[T]
-	kind string
+	repo     *repository.Repository[T]
+	kind     string
+	validate ValidatorFunc[T]
 }
 
 // NewHandler creates a Handler for the given resource type.
-func NewHandler[T meta.Object](repo *repository.Repository[T], kind string) *Handler[T] {
-	return &Handler[T]{repo: repo, kind: kind}
+// An optional validator is called on Create and Update.
+func NewHandler[T meta.Object](repo *repository.Repository[T], kind string, opts ...ValidatorFunc[T]) *Handler[T] {
+	h := &Handler[T]{repo: repo, kind: kind}
+	if len(opts) > 0 {
+		h.validate = opts[0]
+	}
+	return h
 }
 
 // Create handles POST requests to create a new resource.
@@ -31,6 +40,13 @@ func (h *Handler[T]) Create(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		badRequest(w, fmt.Sprintf("invalid request body: %v", err))
 		return
+	}
+
+	if h.validate != nil {
+		if err := h.validate(obj); err != nil {
+			badRequest(w, err.Error())
+			return
+		}
 	}
 
 	name := obj.GetObjectMeta().Name
@@ -104,6 +120,13 @@ func (h *Handler[T]) Update(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		badRequest(w, fmt.Sprintf("invalid request body: %v", err))
 		return
+	}
+
+	if h.validate != nil {
+		if err := h.validate(obj); err != nil {
+			badRequest(w, err.Error())
+			return
+		}
 	}
 
 	if obj.GetObjectMeta().Name != name {
