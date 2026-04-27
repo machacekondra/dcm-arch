@@ -18,10 +18,84 @@
     return resp.json();
   }
 
-  async function apiGetStatus(name) {
-    // Status is stored at a separate key, read via store
-    // For now, return null — status is available after controller runs
-    return null;
+  async function apiCreate(resource, yamlBody) {
+    const resp = await fetch(`${API}/${resource}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/yaml' },
+      body: yamlBody,
+    });
+    const body = await resp.text();
+    if (!resp.ok) {
+      let msg = body;
+      try { msg = JSON.parse(body).error; } catch(_) {}
+      throw new Error(msg);
+    }
+    return { revision: resp.headers.get('X-DCM-Revision') };
+  }
+
+  async function apiDelete(resource, name, revision) {
+    const resp = await fetch(`${API}/${resource}/${name}`, {
+      method: 'DELETE',
+      headers: { 'X-DCM-Revision': String(revision) },
+    });
+    if (!resp.ok) {
+      const body = await resp.text();
+      let msg = body;
+      try { msg = JSON.parse(body).error; } catch(_) {}
+      throw new Error(msg);
+    }
+  }
+
+  // --- Modal ---
+
+  function showCreateModal(title, yamlTemplate, resource, onSuccess) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal">
+        <div class="modal-header">
+          <h3>${esc(title)}</h3>
+          <button class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <textarea class="modal-editor" spellcheck="false">${esc(yamlTemplate.trim())}</textarea>
+          <div class="modal-error" style="display:none"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="modal-btn modal-btn-cancel">Cancel</button>
+          <button class="modal-btn modal-btn-create">Create</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+    overlay.querySelector('.modal-close').onclick = close;
+    overlay.querySelector('.modal-btn-cancel').onclick = close;
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+    const editor = overlay.querySelector('.modal-editor');
+    const errorEl = overlay.querySelector('.modal-error');
+    const createBtn = overlay.querySelector('.modal-btn-create');
+
+    createBtn.onclick = async () => {
+      errorEl.style.display = 'none';
+      createBtn.disabled = true;
+      createBtn.textContent = 'Creating...';
+      try {
+        await apiCreate(resource, editor.value);
+        close();
+        if (onSuccess) onSuccess();
+      } catch (err) {
+        errorEl.textContent = err.message;
+        errorEl.style.display = 'block';
+        createBtn.disabled = false;
+        createBtn.textContent = 'Create';
+      }
+    };
+
+    // Focus and select the name field
+    setTimeout(() => editor.focus(), 100);
   }
 
   // --- Router ---
@@ -81,6 +155,97 @@
 
   window.addEventListener('hashchange', navigate);
   window.addEventListener('load', navigate);
+
+  // --- YAML Templates ---
+
+  const TMPL_APP = `
+apiVersion: dcm.io/v1alpha1
+kind: Application
+metadata:
+  name: my-app
+  labels:
+    team: platform
+spec:
+  resources:
+    - type: database.postgresql
+      name: my-db
+      properties:
+        size: S
+    - type: compute.container
+      name: my-api
+      properties:
+        image: quay.io/example/api
+      requirements:
+        - my-db`;
+
+  const TMPL_ENV = `
+apiVersion: dcm.io/v1alpha1
+kind: Environment
+metadata:
+  name: prod-eu-k8s
+  labels:
+    tier: production
+spec:
+  type: kubernetes
+  description: "Production Kubernetes in Frankfurt"
+  connection:
+    endpoint: "https://k8s-prod.example.com:6443"
+    credentialRef: "vault:secret/dcm/prod-eu"
+  capabilities:
+    resourceTypes:
+      - database.postgresql
+      - compute.container
+    features:
+      - ssd-storage
+  sovereignty:
+    country: DE
+    region: eu-central-1
+    jurisdiction: EU
+    compliance:
+      - GDPR
+    dataClassification: confidential`;
+
+  const TMPL_RT = `
+apiVersion: dcm.io/v1alpha1
+kind: ResourceType
+metadata:
+  name: database.postgresql
+  labels:
+    category: database
+spec:
+  version: "1.0.0"
+  lifecycle: stable
+  schema:
+    type: object
+    required:
+      - size
+    properties:
+      size:
+        type: string
+        description: "Instance size"
+        enum: ["S", "M", "L"]
+        default: "S"
+      host:
+        type: string
+        description: "Database hostname"
+        readOnly: true
+      port:
+        type: integer
+        description: "Database port"
+        readOnly: true`;
+
+  const TMPL_POLICY = `
+apiVersion: dcm.io/v1alpha1
+kind: PlacementPolicy
+metadata:
+  name: prefer-eu
+spec:
+  match:
+    all: true
+  rule: 'env.sovereignty.jurisdiction == "EU"'
+  prefer: "env.capacity.cpu.total"
+  weight: 1.0
+  priority: 100`;
 
   // --- Helpers ---
   function badge(text, type = 'neutral') {
@@ -207,13 +372,19 @@
     const items = data.items || [];
 
     el.innerHTML = `
-      <div class="page-header">
-        <h2>Applications</h2>
-        <p>${items.length} application${items.length !== 1 ? 's' : ''} registered</p>
+      <div class="page-header page-header-row">
+        <div>
+          <h2>Applications</h2>
+          <p>${items.length} application${items.length !== 1 ? 's' : ''} registered</p>
+        </div>
+        <button class="create-btn" id="create-app-btn">+ Create Application</button>
       </div>
       ${items.length ? renderAppCards(items) :
-        '<div class="empty-state"><div class="empty-state-icon">&#128230;</div><h3>No applications</h3><p>Create an Application via the API or GitOps pipeline.</p></div>'}
+        '<div class="empty-state"><div class="empty-state-icon">&#128230;</div><h3>No applications</h3><p>Click "Create Application" to get started.</p></div>'}
     `;
+
+    $('#create-app-btn', el).onclick = () =>
+      showCreateModal('Create Application', TMPL_APP, 'applications', () => navigate());
   }
 
   async function renderApplicationDetail(el, params) {
@@ -328,9 +499,12 @@
     const items = data.items || [];
 
     el.innerHTML = `
-      <div class="page-header">
-        <h2>Environments</h2>
-        <p>${items.length} environment${items.length !== 1 ? 's' : ''} registered</p>
+      <div class="page-header page-header-row">
+        <div>
+          <h2>Environments</h2>
+          <p>${items.length} environment${items.length !== 1 ? 's' : ''} registered</p>
+        </div>
+        <button class="create-btn" id="create-env-btn">+ Create Environment</button>
       </div>
       ${items.length ? '<div class="cards-grid">' + items.map(env => `
         <div class="card" onclick="location.hash='#/environments/${env.metadata.name}'">
@@ -349,8 +523,11 @@
           ${env.metadata.labels ? '<div style="margin-top:12px">' + tags(env.metadata.labels) + '</div>' : ''}
         </div>
       `).join('') + '</div>' :
-        '<div class="empty-state"><div class="empty-state-icon">&#9729;</div><h3>No environments</h3><p>Register an Environment via the API.</p></div>'}
+        '<div class="empty-state"><div class="empty-state-icon">&#9729;</div><h3>No environments</h3><p>Click "Create Environment" to register one.</p></div>'}
     `;
+
+    $('#create-env-btn', el).onclick = () =>
+      showCreateModal('Create Environment', TMPL_ENV, 'environments', () => navigate());
   }
 
   async function renderEnvironmentDetail(el, params) {
@@ -440,9 +617,12 @@
     const items = data.items || [];
 
     el.innerHTML = `
-      <div class="page-header">
-        <h2>Resource Types</h2>
-        <p>${items.length} resource type${items.length !== 1 ? 's' : ''} in catalog</p>
+      <div class="page-header page-header-row">
+        <div>
+          <h2>Resource Types</h2>
+          <p>${items.length} resource type${items.length !== 1 ? 's' : ''} in catalog</p>
+        </div>
+        <button class="create-btn" id="create-rt-btn">+ Create Resource Type</button>
       </div>
       ${items.length ? '<div class="cards-grid">' + items.map(rt => {
         const schema = rt.spec?.schema;
@@ -465,8 +645,11 @@
             ${rt.metadata.labels ? '<div style="margin-top:12px">' + tags(rt.metadata.labels) + '</div>' : ''}
           </div>`;
       }).join('') + '</div>' :
-        '<div class="empty-state"><div class="empty-state-icon">&#128204;</div><h3>No resource types</h3><p>Define ResourceTypes via the API.</p></div>'}
+        '<div class="empty-state"><div class="empty-state-icon">&#128204;</div><h3>No resource types</h3><p>Click "Create Resource Type" to define one.</p></div>'}
     `;
+
+    $('#create-rt-btn', el).onclick = () =>
+      showCreateModal('Create Resource Type', TMPL_RT, 'resourcetypes', () => navigate());
   }
 
   async function renderResourceTypeDetail(el, params) {
@@ -725,9 +908,12 @@
     const items = data.items || [];
 
     el.innerHTML = `
-      <div class="page-header">
-        <h2>Placement Policies</h2>
-        <p>${items.length} polic${items.length !== 1 ? 'ies' : 'y'} defined</p>
+      <div class="page-header page-header-row">
+        <div>
+          <h2>Placement Policies</h2>
+          <p>${items.length} polic${items.length !== 1 ? 'ies' : 'y'} defined</p>
+        </div>
+        <button class="create-btn" id="create-policy-btn">+ Create Policy</button>
       </div>
       ${items.length ? `<div class="cards-grid">${items.map(p => {
         const m = p.spec.match || {};
@@ -760,8 +946,11 @@
           ${p.metadata.labels ? '<div style="margin-top:12px">' + tags(p.metadata.labels) + '</div>' : ''}
         </div>`;
       }).join('')}</div>` :
-        '<div class="empty-state"><div class="empty-state-icon">&#128737;</div><h3>No policies</h3><p>Define PlacementPolicy resources via the API.</p></div>'}
+        '<div class="empty-state"><div class="empty-state-icon">&#128737;</div><h3>No policies</h3><p>Click "Create Policy" to define one.</p></div>'}
     `;
+
+    $('#create-policy-btn', el).onclick = () =>
+      showCreateModal('Create Placement Policy', TMPL_POLICY, 'placementpolicies', () => navigate());
   }
 
 })();
