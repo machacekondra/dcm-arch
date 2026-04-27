@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/dcm-io/dcm/pkg/dashboard"
 	"github.com/dcm-io/dcm/pkg/store"
 )
 
@@ -18,6 +19,16 @@ type Server struct {
 func NewServer(addr string, s store.Store) *Server {
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, s)
+	dashboard.Register(mux)
+
+	// Redirect root to dashboard
+	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			http.Redirect(w, r, "/dashboard/", http.StatusFound)
+			return
+		}
+		http.NotFound(w, r)
+	})
 
 	return &Server{
 		httpServer: &http.Server{
