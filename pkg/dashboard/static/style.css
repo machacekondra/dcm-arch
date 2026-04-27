@@ -451,6 +451,20 @@ tr:hover td {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* === Buttons === */
+.simulate-btn {
+  padding: 6px 16px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+.simulate-btn:hover { background: var(--accent-hover); }
+
 /* === Responsive === */
 @media (max-width: 768px) {
   .sidebar { width: 60px; min-width: 60px; }

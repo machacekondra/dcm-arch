@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/dcm-io/dcm/pkg/apis/v1alpha1"
+	"github.com/dcm-io/dcm/pkg/placement"
 	"github.com/dcm-io/dcm/pkg/repository"
 	"github.com/dcm-io/dcm/pkg/schema"
 	"github.com/dcm-io/dcm/pkg/store"
@@ -17,14 +18,17 @@ const basePath = "/apis/dcm.io/v1alpha1"
 // their CRUD handlers on the given mux.
 func RegisterRoutes(mux *http.ServeMux, s store.Store) {
 	rtRepo := repository.New[*v1alpha1.ResourceType](s, repository.ResourceTypeKey, repository.ResourceTypePrefix())
+	appRepo := repository.New[*v1alpha1.Application](s, repository.ApplicationKey, repository.ApplicationPrefix())
+	envRepo := repository.New[*v1alpha1.Environment](s, repository.EnvironmentKey, repository.EnvironmentPrefix())
+	policyRepo := repository.New[*v1alpha1.PlacementPolicy](s, repository.PlacementPolicyKey, repository.PlacementPolicyPrefix())
 
 	registerHandlers(mux, "applications", NewHandler(
-		repository.New[*v1alpha1.Application](s, repository.ApplicationKey, repository.ApplicationPrefix()),
+		appRepo,
 		v1alpha1.KindApplication,
 		applicationValidator(rtRepo),
 	))
 	registerHandlers(mux, "environments", NewHandler(
-		repository.New[*v1alpha1.Environment](s, repository.EnvironmentKey, repository.EnvironmentPrefix()),
+		envRepo,
 		v1alpha1.KindEnvironment,
 		func(env *v1alpha1.Environment) error { return validation.ValidateEnvironment(env).Error() },
 	))
@@ -39,10 +43,15 @@ func RegisterRoutes(mux *http.ServeMux, s store.Store) {
 		func(r *v1alpha1.Recipe) error { return validation.ValidateRecipe(r).Error() },
 	))
 	registerHandlers(mux, "placementpolicies", NewHandler(
-		repository.New[*v1alpha1.PlacementPolicy](s, repository.PlacementPolicyKey, repository.PlacementPolicyPrefix()),
+		policyRepo,
 		v1alpha1.KindPlacementPolicy,
 		func(pp *v1alpha1.PlacementPolicy) error { return validation.ValidatePlacementPolicy(pp).Error() },
 	))
+
+	// Placement simulation endpoint
+	placer, _ := placement.NewEngine()
+	ph := &PlacementHandler{appRepo: appRepo, envRepo: envRepo, policyRepo: policyRepo, engine: placer}
+	mux.HandleFunc("GET "+basePath+"/placement/{name}", ph.simulate)
 }
 
 // applicationValidator returns a validator that performs both structural and

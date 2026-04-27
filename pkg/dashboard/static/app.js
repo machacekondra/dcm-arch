@@ -34,6 +34,7 @@
     '/resourcetypes': renderResourceTypes,
     '/resourcetypes/:name': renderResourceTypeDetail,
     '/recipes': renderRecipes,
+    '/placement': renderPlacement,
     '/policies': renderPolicies,
   };
 
@@ -553,6 +554,167 @@
         `).join('')}</tbody>
       </table></div>` :
         '<div class="empty-state"><div class="empty-state-icon">&#128196;</div><h3>No recipes</h3><p>Register Recipe resources via the API.</p></div>'}
+    `;
+  }
+
+  // --- Policies ---
+
+  // --- Placement ---
+
+  async function renderPlacement(el) {
+    const [apps, envs, policies] = await Promise.all([
+      api('applications'), api('environments'), api('placementpolicies'),
+    ]);
+    const appItems = apps.items || [];
+    const envItems = envs.items || [];
+    const policyItems = policies.items || [];
+
+    el.innerHTML = `
+      <div class="page-header">
+        <h2>Placement Simulator</h2>
+        <p>Simulate where Application resources would be placed based on current environments and policies.</p>
+      </div>
+
+      <div class="detail-section">
+        <h3>Select Application</h3>
+        ${appItems.length ? `
+          <div class="cards-grid">
+            ${appItems.map(app => `
+              <div class="card placement-app-card" data-app="${esc(app.metadata.name)}" style="cursor:pointer">
+                <div class="card-header">
+                  <div>
+                    <div class="card-title">${esc(app.metadata.name)}</div>
+                    <div class="card-subtitle">${(app.spec?.resources || []).length} resources</div>
+                  </div>
+                  <button class="simulate-btn" data-app="${esc(app.metadata.name)}">Simulate</button>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        ` : '<div class="empty-state"><h3>No applications</h3><p>Create an Application first.</p></div>'}
+      </div>
+
+      <div class="detail-section">
+        <h3>Current Environments (${envItems.length})</h3>
+        <div class="table-container"><table>
+          <thead><tr><th>Name</th><th>Type</th><th>Resource Types</th><th>Jurisdiction</th><th>Features</th></tr></thead>
+          <tbody>${envItems.map(env => `
+            <tr>
+              <td><strong>${esc(env.metadata.name)}</strong></td>
+              <td>${typeBadge(env.spec.type)}</td>
+              <td>${(env.spec.capabilities?.resourceTypes || []).map(rt => badge(rt, 'accent')).join(' ')}</td>
+              <td>${esc(env.spec.sovereignty?.jurisdiction || '-')} (${esc(env.spec.sovereignty?.country || '')})</td>
+              <td>${(env.spec.capabilities?.features || []).map(f => badge(f, 'neutral')).join(' ') || '-'}</td>
+            </tr>
+          `).join('')}</tbody>
+        </table></div>
+      </div>
+
+      <div class="detail-section">
+        <h3>Active Policies (${policyItems.length})</h3>
+        ${policyItems.length ? `<div class="table-container"><table>
+          <thead><tr><th>Name</th><th>Match</th><th>Rule</th><th>Prefer</th><th>Weight</th><th>Priority</th></tr></thead>
+          <tbody>${policyItems.map(p => {
+            const m = p.spec.match || {};
+            let matchDesc = '-';
+            if (m.all) matchDesc = 'all';
+            else if (m.labels) matchDesc = Object.entries(m.labels).map(([k,v]) => k+'='+v).join(', ');
+            else if (m.resourceTypes) matchDesc = m.resourceTypes.join(', ');
+            return `<tr>
+              <td><strong>${esc(p.metadata.name)}</strong></td>
+              <td>${esc(matchDesc)}</td>
+              <td><code style="font-size:12px;color:var(--warning)">${esc(p.spec.rule || '-')}</code></td>
+              <td><code style="font-size:12px;color:var(--success)">${esc(p.spec.prefer || '-')}</code></td>
+              <td>${p.spec.weight || 1.0}</td>
+              <td>${p.spec.priority || 0}</td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table></div>` : '<p style="color:var(--text-muted)">No policies defined. Resources will be placed in any eligible environment.</p>'}
+      </div>
+
+      <div id="placement-result"></div>
+    `;
+
+    // Attach click handlers
+    el.querySelectorAll('.simulate-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const appName = btn.dataset.app;
+        await runPlacementSimulation(appName);
+      });
+    });
+  }
+
+  async function runPlacementSimulation(appName) {
+    const resultEl = document.getElementById('placement-result');
+    resultEl.innerHTML = '<div class="loading"><div class="spinner"></div>Running placement simulation...</div>';
+
+    const resp = await fetch(`${API}/placement/${encodeURIComponent(appName)}`);
+    const data = await resp.json();
+
+    if (data.error && !data.assignments) {
+      resultEl.innerHTML = `
+        <div class="detail-section">
+          <h3>Placement Result: ${esc(appName)}</h3>
+          <div style="background:var(--danger-bg);padding:16px;border-radius:var(--radius-md);border:1px solid rgba(239,68,68,0.3)">
+            <strong style="color:var(--danger)">Placement Failed</strong>
+            <pre style="margin-top:8px;font-size:13px;color:var(--text-secondary);white-space:pre-wrap">${esc(data.error)}</pre>
+          </div>
+        </div>`;
+      return;
+    }
+
+    const assignments = data.assignments || {};
+    const decisions = data.decisions || [];
+
+    resultEl.innerHTML = `
+      <div class="detail-section">
+        <h3>Placement Result: ${esc(appName)}</h3>
+        ${data.error ? `<div style="background:var(--warning-bg);padding:12px;border-radius:var(--radius-md);margin-bottom:16px;border:1px solid rgba(245,158,11,0.3)">
+          <strong style="color:var(--warning)">Warning:</strong> ${esc(data.error)}
+        </div>` : `<div style="background:var(--success-bg);padding:12px;border-radius:var(--radius-md);margin-bottom:16px;border:1px solid rgba(34,197,94,0.3)">
+          <strong style="color:var(--success)">Placement Succeeded</strong> — ${Object.keys(assignments).length} resource(s) placed
+        </div>`}
+
+        <div class="detail-section">
+          <h3>Assignments</h3>
+          <div class="table-container"><table>
+            <thead><tr><th>Resource</th><th>Environment</th></tr></thead>
+            <tbody>${Object.entries(assignments).map(([res, env]) => `
+              <tr>
+                <td><span class="resource-name">${esc(res)}</span></td>
+                <td>${badge(env, 'success')}</td>
+              </tr>
+            `).join('')}</tbody>
+          </table></div>
+        </div>
+
+        <div class="detail-section">
+          <h3>Decision Log</h3>
+          ${decisions.map(dec => `
+            <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:16px;margin-bottom:12px">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                <strong style="font-size:15px">${esc(dec.Resource)}</strong>
+                ${dec.Selected ? badge(dec.Selected, 'success') : badge('FAILED', 'danger')}
+              </div>
+              ${dec.FailedReason ? `<div style="color:var(--danger);font-size:13px;margin-bottom:8px">${esc(dec.FailedReason)}</div>` : ''}
+              ${dec.Candidates?.length ? `
+                <table style="font-size:13px">
+                  <thead><tr><th>Environment</th><th>Eligible</th><th>Score</th><th>Details</th></tr></thead>
+                  <tbody>${dec.Candidates.map(c => `
+                    <tr>
+                      <td>${esc(c.Environment)}</td>
+                      <td>${c.Eligible ? badge('yes', 'success') : badge('no', 'danger')}</td>
+                      <td>${c.Eligible ? c.Score.toFixed(2) : '-'}</td>
+                      <td>${c.Eliminations?.length ? c.Eliminations.map(e => `<div style="color:var(--danger);font-size:12px">${esc(e)}</div>`).join('') : c.Eligible ? '<span style="color:var(--success)">passed all rules</span>' : '-'}</td>
+                    </tr>
+                  `).join('')}</tbody>
+                </table>
+              ` : ''}
+            </div>
+          `).join('')}
+        </div>
+      </div>
     `;
   }
 
