@@ -1,1 +1,9 @@
 .claude
+
+# Go
+/dcm-server
+*.sock
+*.db
+
+# Runtime
+/tmp/
