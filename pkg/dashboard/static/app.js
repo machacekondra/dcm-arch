@@ -15,7 +15,9 @@
   async function apiGet(resource, name) {
     const resp = await fetch(`${API}/${resource}/${name}`);
     if (!resp.ok) return null;
-    return resp.json();
+    const data = await resp.json();
+    data._revision = resp.headers.get('X-DCM-Revision');
+    return data;
   }
 
   async function apiCreate(resource, yamlBody) {
@@ -96,6 +98,54 @@
 
     // Focus and select the name field
     setTimeout(() => editor.focus(), 100);
+  }
+
+  function showDeleteConfirm(kindLabel, name, resource, revision, redirectHash) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal" style="width:440px">
+        <div class="modal-header">
+          <h3>Delete ${esc(kindLabel)}</h3>
+          <button class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p style="margin-bottom:12px">Are you sure you want to delete <strong>${esc(name)}</strong>?</p>
+          <p style="color:var(--text-muted);font-size:13px">This action cannot be undone.</p>
+          <div class="modal-error" style="display:none"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="modal-btn modal-btn-cancel">Cancel</button>
+          <button class="modal-btn modal-btn-delete">Delete</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+    overlay.querySelector('.modal-close').onclick = close;
+    overlay.querySelector('.modal-btn-cancel').onclick = close;
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+    const errorEl = overlay.querySelector('.modal-error');
+    const deleteBtn = overlay.querySelector('.modal-btn-delete');
+
+    deleteBtn.onclick = async () => {
+      errorEl.style.display = 'none';
+      deleteBtn.disabled = true;
+      deleteBtn.textContent = 'Deleting...';
+      try {
+        await apiDelete(resource, name, revision);
+        close();
+        location.hash = redirectHash;
+        navigate();
+      } catch (err) {
+        errorEl.textContent = err.message;
+        errorEl.style.display = 'block';
+        deleteBtn.disabled = false;
+        deleteBtn.textContent = 'Delete';
+      }
+    };
   }
 
   // --- Router ---
@@ -686,7 +736,10 @@ spec:
           <div class="detail-title">${esc(rt.metadata.name)}</div>
           <div class="detail-meta">v${esc(rt.spec.version)}</div>
         </div>
-        ${phaseBadge(rt.spec.lifecycle)}
+        <div style="display:flex;align-items:center;gap:12px">
+          ${phaseBadge(rt.spec.lifecycle)}
+          <button class="delete-btn" id="delete-rt-btn">Delete</button>
+        </div>
       </div>
 
       ${rt.metadata.labels ? `<div class="detail-section"><h3>Labels</h3>${tags(rt.metadata.labels)}</div>` : ''}
@@ -711,6 +764,9 @@ spec:
         </table></div>` : '<p style="color:var(--text-muted)">No output properties</p>'}
       </div>
     `;
+
+    $('#delete-rt-btn', el).onclick = () =>
+      showDeleteConfirm('Resource Type', rt.metadata.name, 'resourcetypes', rt._revision, '#/resourcetypes');
   }
 
   // --- Recipes ---

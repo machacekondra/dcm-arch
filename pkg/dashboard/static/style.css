@@ -591,6 +591,25 @@ tr:hover td {
 }
 .simulate-btn:hover { background: var(--accent-hover); }
 
+.delete-btn {
+  padding: 6px 16px;
+  background: transparent;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.delete-btn:hover { background: var(--danger-bg); }
+
+.modal-btn-delete {
+  background: var(--danger);
+  color: white;
+}
+.modal-btn-delete:hover { background: #dc2626; }
+
 /* === Responsive === */
 @media (max-width: 768px) {
   .sidebar { width: 60px; min-width: 60px; }
