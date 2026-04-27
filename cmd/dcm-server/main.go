@@ -7,12 +7,14 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/dcm-io/dcm/internal/server"
 )
 
 func main() {
 	dataDir := flag.String("data-dir", "/tmp/dcm", "Directory for SQLite database and unix socket")
+	listenAddr := flag.String("listen", ":8080", "HTTP listen address")
 	flag.Parse()
 
 	if err := os.MkdirAll(*dataDir, 0o755); err != nil {
@@ -23,7 +25,8 @@ func main() {
 	defer cancel()
 
 	srv, err := server.New(ctx, server.Config{
-		DataDir: *dataDir,
+		DataDir:    *dataDir,
+		ListenAddr: *listenAddr,
 	})
 	if err != nil {
 		log.Fatalf("Failed to start server: %v", err)
@@ -34,7 +37,10 @@ func main() {
 	sig := <-sigCh
 	log.Printf("Received signal %s, shutting down", sig)
 
-	if err := srv.Stop(); err != nil {
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+
+	if err := srv.Stop(shutdownCtx); err != nil {
 		log.Fatalf("Failed to stop server: %v", err)
 	}
 }
