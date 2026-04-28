@@ -9,7 +9,7 @@
       ansible.builtin.set_fact:
         _resource_name: "{{ dcm_context.resource.name }}"
         _app_name: "{{ dcm_context.application.name }}"
-        _namespace: "{{ namespace | default('dcm-' + dcm_context.application.name) }}"
+        _namespace: "{{ target_namespace | default('dcm-' + dcm_context.application.name) }}"
         _image: "{{ image }}"
         _replicas: "{{ replicas | default(1) | int }}"
         _cpu_request: "{{ cpu | default('100m') }}"

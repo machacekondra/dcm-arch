@@ -8,7 +8,7 @@
     - name: Set derived variables
       ansible.builtin.set_fact:
         _resource_name: "{{ dcm_context.resource.name }}"
-        _namespace: "{{ namespace | default('dcm-' + dcm_context.application.name) }}"
+        _namespace: "{{ target_namespace | default('dcm-' + dcm_context.application.name) }}"
 
     - name: Delete Service
       kubernetes.core.k8s:
