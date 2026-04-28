@@ -1097,7 +1097,10 @@ spec:
             Application: <a href="#/applications/${s.application}" style="color:var(--accent);text-decoration:none">${esc(s.application)}</a>
           </div>
         </div>
-        ${phaseBadge(s.phase)}
+        <div style="display:flex;gap:10px;align-items:center">
+          ${phaseBadge(s.phase)}
+          <button class="delete-btn" id="delete-dep-btn">Delete</button>
+        </div>
       </div>
 
       <div class="detail-section">
@@ -1152,6 +1155,9 @@ spec:
         </table></div>
       </div>` : ''}
     `;
+
+    $('#delete-dep-btn', el).onclick = () =>
+      showDeleteConfirm('Deployment', dep.metadata.name, 'deployments', dep._revision, '#/deployments');
   }
 
   function formatDuration(ms) {
