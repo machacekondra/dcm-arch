@@ -865,6 +865,25 @@ spec:
           ).join('')}</tbody>
         </table></div>
       </div>` : ''}
+
+      ${s.recipes && Object.keys(s.recipes).length ? `<div class="detail-section"><h3>Recipes</h3>
+        <div class="table-container"><table>
+          <thead><tr><th>Resource Type</th><th>Recipe Name</th><th>Driver</th><th>Source</th><th>Parameters</th></tr></thead>
+          <tbody>${Object.entries(s.recipes).flatMap(([rtName, bindings]) =>
+            Object.entries(bindings).map(([recipeName, b]) =>
+              `<tr>
+                <td>${badge(rtName, 'accent')}</td>
+                <td><strong>${esc(recipeName)}</strong></td>
+                <td>${typeBadge(b.type)}</td>
+                <td><code style="font-size:12px">${esc(Object.entries(b.source || {}).map(([k,v]) => k + ': ' + v).join(', '))}</code></td>
+                <td>${b.parameters && Object.keys(b.parameters).length ? '<code style="font-size:12px">' + esc(JSON.stringify(b.parameters)) + '</code>' : '-'}</td>
+              </tr>`
+            )
+          ).join('')}</tbody>
+        </table></div>
+      </div>` : `<div class="detail-section"><h3>Recipes</h3>
+        <p style="color:var(--text-muted)">No recipes configured. Add recipe bindings via Edit to enable provisioning on this environment.</p>
+      </div>`}
     `;
 
     $('#edit-env-btn', el).onclick = () =>
