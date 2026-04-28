@@ -45,8 +45,8 @@
       until: >-
         deploy_status.resources | length > 0 and
         (deploy_status.resources[0].status.readyReplicas | default(0) | int) >= (_replicas | int)
-      retries: 30
-      delay: 10
+      retries: 12
+      delay: 5
 
     - name: Set DCM result
       ansible.builtin.set_fact:

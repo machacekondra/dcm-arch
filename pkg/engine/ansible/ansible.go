@@ -94,6 +94,7 @@ func (d *Driver) Execute(ctx context.Context, inv *engine.Invocation) (*engine.R
 		"DCM_RESULT_FILE="+resultFile,
 		"ANSIBLE_HOST_KEY_CHECKING=False",
 		"ANSIBLE_RETRY_FILES_ENABLED=False",
+		"ANSIBLE_TIMEOUT=30",
 	)
 
 	output, err := cmd.CombinedOutput()

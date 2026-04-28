@@ -52,7 +52,9 @@ func (h *DeployHandler) deploy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := r.Context()
+	// 5-minute timeout for the entire deploy operation
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
+	defer cancel()
 	startedAt := time.Now().UTC()
 	deploymentName := fmt.Sprintf("%s-%d", name, startedAt.Unix())
 
