@@ -809,9 +809,12 @@ spec:
     const policyItems = policies.items || [];
 
     el.innerHTML = `
-      <div class="page-header">
-        <h2>Placement Simulator</h2>
-        <p>Simulate where Application resources would be placed based on current environments and policies.</p>
+      <div class="page-header page-header-row">
+        <div>
+          <h2>Placement Simulator</h2>
+          <p>Simulate where Application resources would be placed based on current environments and policies.</p>
+        </div>
+        <button class="create-btn" id="create-placement-policy-btn">+ Create Policy</button>
       </div>
 
       <div class="detail-section">
@@ -882,6 +885,9 @@ spec:
         await runPlacementSimulation(appName);
       });
     });
+
+    $('#create-placement-policy-btn', el).onclick = () =>
+      showCreateModal('Create Placement Policy', TMPL_POLICY, 'placementpolicies', () => navigate());
   }
 
   async function runPlacementSimulation(appName) {
