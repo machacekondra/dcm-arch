@@ -284,6 +284,27 @@ spec:
         description: "Database port"
         readOnly: true`;
 
+  const TMPL_RECIPE = `
+apiVersion: dcm.io/v1alpha1
+kind: Recipe
+metadata:
+  name: pg-ansible-baremetal
+  labels:
+    resourceType: database.postgresql
+spec:
+  resourceType: database.postgresql
+  resourceTypeVersion: ">=1.0.0"
+  type: ansible
+  source:
+    repository: "https://git.example.com/playbooks.git"
+    playbook: "postgresql/provision.yml"
+    version: "v1.0.0"
+  environmentMatch:
+    types:
+      - bare-metal
+  parameters:
+    backup_retention_period: 7`;
+
   const TMPL_POLICY = `
 apiVersion: dcm.io/v1alpha1
 kind: PlacementPolicy
@@ -776,9 +797,12 @@ spec:
     const items = data.items || [];
 
     el.innerHTML = `
-      <div class="page-header">
-        <h2>Recipes</h2>
-        <p>${items.length} recipe${items.length !== 1 ? 's' : ''} registered</p>
+      <div class="page-header page-header-row">
+        <div>
+          <h2>Recipes</h2>
+          <p>${items.length} recipe${items.length !== 1 ? 's' : ''} registered</p>
+        </div>
+        <button class="create-btn" id="create-recipe-btn">+ Create Recipe</button>
       </div>
       ${items.length ? `<div class="table-container"><table>
         <thead><tr><th>Name</th><th>Resource Type</th><th>Type</th><th>Source</th><th>Env Match</th></tr></thead>
@@ -792,8 +816,11 @@ spec:
           </tr>
         `).join('')}</tbody>
       </table></div>` :
-        '<div class="empty-state"><div class="empty-state-icon">&#128196;</div><h3>No recipes</h3><p>Register Recipe resources via the API.</p></div>'}
+        '<div class="empty-state"><div class="empty-state-icon">&#128196;</div><h3>No recipes</h3><p>Click "Create Recipe" to register one.</p></div>'}
     `;
+
+    $('#create-recipe-btn', el).onclick = () =>
+      showCreateModal('Create Recipe', TMPL_RECIPE, 'recipes', () => navigate());
   }
 
   // --- Policies ---
