@@ -25,10 +25,9 @@
         name: "{{ _namespace }}"
         state: present
 
-    - name: Deploy container
-      kubernetes.core.k8s:
-        state: present
-        definition:
+    - name: Build deployment definition
+      ansible.builtin.set_fact:
+        _deployment:
           apiVersion: apps/v1
           kind: Deployment
           metadata:
@@ -39,7 +38,7 @@
               app.kubernetes.io/part-of: "{{ _app_name }}"
               app.kubernetes.io/managed-by: dcm
           spec:
-            replicas: "{{ _replicas }}"
+            replicas: "{{ _replicas | int }}"
             selector:
               matchLabels:
                 app.kubernetes.io/name: "{{ _resource_name }}"
@@ -53,7 +52,7 @@
                   - name: "{{ _resource_name }}"
                     image: "{{ _image }}"
                     ports:
-                      - containerPort: "{{ _port }}"
+                      - containerPort: "{{ _port | int }}"
                         protocol: TCP
                     resources:
                       requests:
@@ -63,10 +62,14 @@
                         cpu: "{{ _cpu_limit }}"
                         memory: "{{ _memory_limit }}"
 
-    - name: Create Service
+    - name: Deploy container
       kubernetes.core.k8s:
         state: present
-        definition:
+        definition: "{{ _deployment }}"
+
+    - name: Build service definition
+      ansible.builtin.set_fact:
+        _service:
           apiVersion: v1
           kind: Service
           metadata:
@@ -79,9 +82,14 @@
             selector:
               app.kubernetes.io/name: "{{ _resource_name }}"
             ports:
-              - port: "{{ _port }}"
-                targetPort: "{{ _port }}"
+              - port: "{{ _port | int }}"
+                targetPort: "{{ _port | int }}"
                 protocol: TCP
+
+    - name: Create Service
+      kubernetes.core.k8s:
+        state: present
+        definition: "{{ _service }}"
 
     - name: Wait for deployment rollout
       kubernetes.core.k8s_info:
