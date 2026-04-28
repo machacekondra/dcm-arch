@@ -27,6 +27,9 @@ func testEnv(name string) *v1alpha1.Environment {
 	env.APIVersion = v1alpha1.GroupVersion
 	env.Kind = v1alpha1.KindEnvironment
 	env.Metadata = meta.ObjectMeta{Name: name}
+	mockRecipe := map[string]v1alpha1.RecipeBinding{
+		"default": {Type: "mock", Source: map[string]string{}},
+	}
 	env.Spec = v1alpha1.EnvironmentSpec{
 		Type: "kubernetes",
 		Connection: v1alpha1.ConnectionSpec{
@@ -37,6 +40,12 @@ func testEnv(name string) *v1alpha1.Environment {
 		},
 		Sovereignty: v1alpha1.SovereigntySpec{
 			Country: "US", Region: "us-east-1", Jurisdiction: "US", DataClassification: "internal",
+		},
+		Recipes: map[string]map[string]v1alpha1.RecipeBinding{
+			"database.postgresql": mockRecipe,
+			"compute.container":   mockRecipe,
+			"cache.redis":         mockRecipe,
+			"queue.rabbitmq":      mockRecipe,
 		},
 	}
 	return env

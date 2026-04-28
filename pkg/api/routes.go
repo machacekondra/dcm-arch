@@ -6,6 +6,7 @@ import (
 
 	"github.com/dcm-io/dcm/pkg/apis/v1alpha1"
 	"github.com/dcm-io/dcm/pkg/engine"
+	"github.com/dcm-io/dcm/pkg/engine/ansible"
 	"github.com/dcm-io/dcm/pkg/placement"
 	"github.com/dcm-io/dcm/pkg/repository"
 	"github.com/dcm-io/dcm/pkg/schema"
@@ -58,9 +59,12 @@ func RegisterRoutes(mux *http.ServeMux, s store.Store) {
 	ph := &PlacementHandler{appRepo: appRepo, envRepo: envRepo, policyRepo: policyRepo, engine: placer}
 	mux.HandleFunc("GET "+basePath+"/placement/{name}", ph.simulate)
 
-	// Deploy endpoint (placement + execution with mock driver)
-	mockDriver := engine.NewMockDriver()
-	executor := engine.NewExecutor(map[string]engine.Driver{"mock": mockDriver})
+	// Deploy endpoint with registered drivers
+	ansibleDriver := ansible.New("")
+	executor := engine.NewExecutor(map[string]engine.Driver{
+		"mock":    engine.NewMockDriver(),
+		"ansible": ansibleDriver,
+	})
 	dh := &DeployHandler{appRepo: appRepo, envRepo: envRepo, policyRepo: policyRepo, deployRepo: deployRepo, placer: placer, executor: executor}
 	mux.HandleFunc("POST "+basePath+"/deploy/{name}", dh.deploy)
 }

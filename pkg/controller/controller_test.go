@@ -90,6 +90,13 @@ func createContainerType(t *testing.T, rtRepo *repository.Repository[*v1alpha1.R
 
 func createEnvironment(t *testing.T, envRepo *repository.Repository[*v1alpha1.Environment], name string, resourceTypes []string) {
 	t.Helper()
+	// Build mock recipe bindings for all resource types
+	recipes := make(map[string]map[string]v1alpha1.RecipeBinding)
+	for _, rt := range resourceTypes {
+		recipes[rt] = map[string]v1alpha1.RecipeBinding{
+			"default": {Type: "mock", Source: map[string]string{}},
+		}
+	}
 	env := &v1alpha1.Environment{}
 	env.APIVersion = v1alpha1.GroupVersion
 	env.Kind = v1alpha1.KindEnvironment
@@ -103,6 +110,7 @@ func createEnvironment(t *testing.T, envRepo *repository.Repository[*v1alpha1.En
 		Sovereignty: v1alpha1.SovereigntySpec{
 			Country: "US", Region: "us-east-1", Jurisdiction: "US", DataClassification: "internal",
 		},
+		Recipes: recipes,
 	}
 	if _, err := envRepo.Create(context.Background(), env); err != nil {
 		t.Fatalf("create env: %v", err)

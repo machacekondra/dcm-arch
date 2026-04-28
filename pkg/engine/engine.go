@@ -110,7 +110,13 @@ func (e *Executor) executeResource(
 	env := plan.Environments[envName]
 
 	// Resolve recipe for this resource type on this environment
-	recipeType, source, recipeParams := resolveRecipe(env, res)
+	recipeType, source, recipeParams, recipeErr := resolveRecipe(env, res)
+	if recipeErr != nil {
+		result.Statuses[res.Name] = ResourceStatus{
+			Name: res.Name, Environment: envName, Phase: "Failed", Error: recipeErr.Error(),
+		}
+		return recipeErr
+	}
 
 	// Merge parameters: recipe defaults + developer properties (developer wins)
 	properties := mergeProperties(recipeParams, res.Properties)
@@ -159,15 +165,19 @@ func (e *Executor) executeResource(
 }
 
 // resolveRecipe finds the recipe binding for a resource type on an environment.
-// Returns the recipe type, source, and default parameters.
-func resolveRecipe(env *v1alpha1.Environment, res v1alpha1.ResourceDecl) (string, map[string]string, map[string]any) {
-	if env == nil || env.Spec.Recipes == nil {
-		return "mock", nil, nil
+// Returns the recipe type, source, default parameters, and an error if no recipe is found.
+func resolveRecipe(env *v1alpha1.Environment, res v1alpha1.ResourceDecl) (string, map[string]string, map[string]any, error) {
+	if env == nil {
+		return "", nil, nil, fmt.Errorf("no environment assigned for resource %q", res.Name)
+	}
+
+	if env.Spec.Recipes == nil {
+		return "", nil, nil, fmt.Errorf("environment %q has no recipes configured for resource type %q — add a recipe binding to the environment's spec.recipes", env.Metadata.Name, res.Type)
 	}
 
 	recipes, ok := env.Spec.Recipes[res.Type]
 	if !ok {
-		return "mock", nil, nil
+		return "", nil, nil, fmt.Errorf("environment %q has no recipe for resource type %q — register a recipe binding in spec.recipes[%q]", env.Metadata.Name, res.Type, res.Type)
 	}
 
 	// Use named recipe if specified, otherwise use "default"
@@ -178,10 +188,14 @@ func resolveRecipe(env *v1alpha1.Environment, res v1alpha1.ResourceDecl) (string
 
 	binding, ok := recipes[recipeName]
 	if !ok {
-		return "mock", nil, nil
+		available := make([]string, 0, len(recipes))
+		for name := range recipes {
+			available = append(available, name)
+		}
+		return "", nil, nil, fmt.Errorf("recipe %q not found for resource type %q on environment %q (available: %v)", recipeName, res.Type, env.Metadata.Name, available)
 	}
 
-	return binding.Type, binding.Source, binding.Parameters
+	return binding.Type, binding.Source, binding.Parameters, nil
 }
 
 func mergeProperties(base map[string]any, overlay map[string]any) map[string]any {
