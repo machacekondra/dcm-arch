@@ -565,6 +565,7 @@ spec:
         </div>
         <div style="display:flex;gap:10px;align-items:center">
           <button class="create-btn" id="deploy-app-btn">Deploy</button>
+          <button class="edit-btn" id="edit-app-btn">Edit</button>
           <button class="delete-btn" id="delete-app-btn">Delete</button>
         </div>
       </div>
@@ -602,6 +603,8 @@ spec:
     `;
 
     $('#deploy-app-btn', el).onclick = () => runDeploy(app.metadata.name);
+    $('#edit-app-btn', el).onclick = () =>
+      showEditModal('Edit Application', 'applications', app.metadata.name, app._revision, () => navigate());
     $('#delete-app-btn', el).onclick = () =>
       showDeleteConfirm('Application', app.metadata.name, 'applications', app._revision, '#/applications');
   }
