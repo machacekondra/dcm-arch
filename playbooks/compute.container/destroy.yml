@@ -4,35 +4,35 @@
   gather_facts: false
   connection: local
 
-  vars:
-    resource_name: "{{ dcm_context.resource.name }}"
-    app_name: "{{ dcm_context.application.name }}"
-    namespace: "{{ namespace | default('dcm-' + app_name) }}"
-
   tasks:
+    - name: Set derived variables
+      ansible.builtin.set_fact:
+        _resource_name: "{{ dcm_context.resource.name }}"
+        _namespace: "{{ namespace | default('dcm-' + dcm_context.application.name) }}"
+
     - name: Delete Service
       kubernetes.core.k8s:
         api_version: v1
         kind: Service
-        name: "{{ resource_name }}"
-        namespace: "{{ namespace }}"
+        name: "{{ _resource_name }}"
+        namespace: "{{ _namespace }}"
         state: absent
 
     - name: Delete Deployment
       kubernetes.core.k8s:
         api_version: apps/v1
         kind: Deployment
-        name: "{{ resource_name }}"
-        namespace: "{{ namespace }}"
+        name: "{{ _resource_name }}"
+        namespace: "{{ _namespace }}"
         state: absent
 
     - name: Wait for pods to terminate
       kubernetes.core.k8s_info:
         api_version: v1
         kind: Pod
-        namespace: "{{ namespace }}"
+        namespace: "{{ _namespace }}"
         label_selectors:
-          - "app.kubernetes.io/name={{ resource_name }}"
+          - "app.kubernetes.io/name={{ _resource_name }}"
       register: pods
       until: pods.resources | length == 0
       retries: 30
