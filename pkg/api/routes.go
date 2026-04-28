@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/dcm-io/dcm/pkg/apis/v1alpha1"
+	"github.com/dcm-io/dcm/pkg/engine"
 	"github.com/dcm-io/dcm/pkg/placement"
 	"github.com/dcm-io/dcm/pkg/repository"
 	"github.com/dcm-io/dcm/pkg/schema"
@@ -52,6 +53,12 @@ func RegisterRoutes(mux *http.ServeMux, s store.Store) {
 	placer, _ := placement.NewEngine()
 	ph := &PlacementHandler{appRepo: appRepo, envRepo: envRepo, policyRepo: policyRepo, engine: placer}
 	mux.HandleFunc("GET "+basePath+"/placement/{name}", ph.simulate)
+
+	// Deploy endpoint (placement + execution with mock driver)
+	mockDriver := engine.NewMockDriver()
+	executor := engine.NewExecutor(map[string]engine.Driver{"mock": mockDriver})
+	dh := &DeployHandler{appRepo: appRepo, envRepo: envRepo, policyRepo: policyRepo, placer: placer, executor: executor}
+	mux.HandleFunc("POST "+basePath+"/deploy/{name}", dh.deploy)
 }
 
 // applicationValidator returns a validator that performs both structural and

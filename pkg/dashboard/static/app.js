@@ -474,6 +474,10 @@ spec:
           <div class="detail-title">${esc(app.metadata.name)}</div>
           <div class="detail-meta">${resources.length} resource${resources.length !== 1 ? 's' : ''}</div>
         </div>
+        <div style="display:flex;gap:10px;align-items:center">
+          <button class="create-btn" id="deploy-app-btn">Deploy</button>
+          <button class="delete-btn" id="delete-app-btn">Delete</button>
+        </div>
       </div>
 
       ${app.metadata.labels ? `<div class="detail-section"><h3>Labels</h3>${tags(app.metadata.labels)}</div>` : ''}
@@ -503,6 +507,98 @@ spec:
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div id="deploy-result"></div>
+    `;
+
+    $('#deploy-app-btn', el).onclick = () => runDeploy(app.metadata.name);
+    $('#delete-app-btn', el).onclick = () =>
+      showDeleteConfirm('Application', app.metadata.name, 'applications', app._revision, '#/applications');
+  }
+
+  async function runDeploy(appName) {
+    const resultEl = document.getElementById('deploy-result');
+    resultEl.innerHTML = '<div class="loading"><div class="spinner"></div>Deploying application...</div>';
+
+    let data;
+    try {
+      const resp = await fetch(API + '/deploy/' + encodeURIComponent(appName), { method: 'POST' });
+      data = await resp.json();
+    } catch (err) {
+      resultEl.innerHTML = `<div class="detail-section" style="background:var(--danger-bg);padding:16px;border-radius:var(--radius-md)">
+        <strong style="color:var(--danger)">Deploy Error</strong>
+        <pre style="margin-top:8px;color:var(--text-secondary);white-space:pre-wrap">${esc(err.message)}</pre>
+      </div>`;
+      return;
+    }
+
+    const isSuccess = data.phase === 'Provisioned';
+    const assignments = data.assignments || {};
+    const levels = data.levels || [];
+    const resources = data.resources || [];
+    const decisions = data.decisions || [];
+
+    resultEl.innerHTML = `
+      <div class="detail-section">
+        <h3>Deploy Result</h3>
+        <div style="background:${isSuccess ? 'var(--success-bg)' : 'var(--danger-bg)'};padding:14px;border-radius:var(--radius-md);margin-bottom:20px;border:1px solid ${isSuccess ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}">
+          <strong style="color:${isSuccess ? 'var(--success)' : 'var(--danger)'}">${isSuccess ? 'Deploy Succeeded' : 'Deploy Failed'}</strong>
+          ${data.error ? `<pre style="margin-top:8px;color:var(--text-secondary);font-size:13px;white-space:pre-wrap">${esc(data.error)}</pre>` : ''}
+        </div>
+
+        ${levels.length ? `<div class="detail-section">
+          <h3>Execution Order</h3>
+          <div class="dag-container">
+            <div class="dag-levels">
+              ${levels.map((level, i) => {
+                const nodes = '<div class="dag-level">' + level.map(name => {
+                  const rs = resources.find(r => r.name === name);
+                  const env = assignments[name] || '';
+                  const phase = rs?.phase || 'Pending';
+                  const nodeColor = phase === 'Provisioned' ? 'var(--success)' : phase === 'Failed' ? 'var(--danger)' : 'var(--border)';
+                  return '<div class="dag-node" style="border-color:' + nodeColor + '">' +
+                    '<div class="dag-node-name">' + esc(name) + '</div>' +
+                    '<div class="dag-node-type">' + esc(env) + '</div>' +
+                    phaseBadge(phase) +
+                  '</div>';
+                }).join('') + '</div>';
+                const arrow = i < levels.length - 1 ? '<div class="dag-arrow">&#x25BC;</div>' : '';
+                return nodes + arrow;
+              }).join('')}
+            </div>
+          </div>
+        </div>` : ''}
+
+        ${resources.length ? `<div class="detail-section">
+          <h3>Resource Status</h3>
+          <div class="table-container"><table>
+            <thead><tr><th>Resource</th><th>Environment</th><th>Status</th><th>Outputs</th></tr></thead>
+            <tbody>${resources.map(r => `
+              <tr>
+                <td><span class="resource-name">${esc(r.name)}</span></td>
+                <td>${r.environment ? badge(r.environment, 'info') : '-'}</td>
+                <td>${phaseBadge(r.phase)}</td>
+                <td>${r.outputs ? '<code style="font-size:12px">' + esc(JSON.stringify(r.outputs).substring(0, 120)) + '</code>' : r.error ? '<span style="color:var(--danger);font-size:12px">' + esc(r.error) + '</span>' : '-'}</td>
+              </tr>
+            `).join('')}</tbody>
+          </table></div>
+        </div>` : ''}
+
+        ${decisions.length ? `<div class="detail-section">
+          <h3>Placement Decisions</h3>
+          ${decisions.map(dec => `
+            <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:14px;margin-bottom:10px">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <strong>${esc(dec.Resource)}</strong>
+                ${dec.Selected ? badge(dec.Selected, 'success') : badge('FAILED', 'danger')}
+              </div>
+              ${dec.Candidates?.length ? '<table style="font-size:13px"><thead><tr><th>Env</th><th>Eligible</th><th>Score</th></tr></thead><tbody>' +
+                dec.Candidates.map(c => '<tr><td>' + esc(c.Environment) + '</td><td>' + (c.Eligible ? badge('yes','success') : badge('no','danger')) + '</td><td>' + (c.Eligible ? c.Score.toFixed(2) : '-') + '</td></tr>').join('') +
+                '</tbody></table>' : ''}
+            </div>
+          `).join('')}
+        </div>` : ''}
       </div>
     `;
   }
