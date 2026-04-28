@@ -155,7 +155,14 @@ func (d *Driver) resolvePlaybook(ctx context.Context, source map[string]string, 
 
 	repo := source["repository"]
 	if repo == "" {
-		// Local playbook path
+		// Local playbook path — resolve relative paths against working directory
+		if !filepath.IsAbs(playbook) {
+			wd, err := os.Getwd()
+			if err != nil {
+				return "", fmt.Errorf("get working directory: %w", err)
+			}
+			playbook = filepath.Join(wd, playbook)
+		}
 		if _, err := os.Stat(playbook); err != nil {
 			return "", fmt.Errorf("playbook not found: %s", playbook)
 		}
