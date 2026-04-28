@@ -158,6 +158,8 @@
     '/resourcetypes': renderResourceTypes,
     '/resourcetypes/:name': renderResourceTypeDetail,
     '/recipes': renderRecipes,
+    '/deployments': renderDeployments,
+    '/deployments/:name': renderDeploymentDetail,
     '/placement': renderPlacement,
     '/policies': renderPolicies,
   };
@@ -372,9 +374,9 @@ spec:
   // --- Pages ---
 
   async function renderOverview(el) {
-    const [apps, envs, rts, recipes, policies] = await Promise.all([
+    const [apps, envs, rts, recipes, policies, deployments] = await Promise.all([
       api('applications'), api('environments'), api('resourcetypes'),
-      api('recipes'), api('placementpolicies'),
+      api('recipes'), api('placementpolicies'), api('deployments'),
     ]);
 
     el.innerHTML = `
@@ -398,6 +400,10 @@ spec:
         <a href="#/recipes" class="stat-card" style="text-decoration:none;color:inherit">
           <div class="stat-value" style="color:var(--warning)">${recipes.items?.length || 0}</div>
           <div class="stat-label">Recipes</div>
+        </a>
+        <a href="#/deployments" class="stat-card" style="text-decoration:none;color:inherit">
+          <div class="stat-value" style="color:var(--warning)">${deployments.items?.length || 0}</div>
+          <div class="stat-label">Deployments</div>
         </a>
         <a href="#/policies" class="stat-card" style="text-decoration:none;color:inherit">
           <div class="stat-value" style="color:var(--text-secondary)">${policies.items?.length || 0}</div>
@@ -915,6 +921,143 @@ spec:
 
     $('#create-recipe-btn', el).onclick = () =>
       showCreateModal('Create Recipe', TMPL_RECIPE, 'recipes', () => navigate());
+  }
+
+  // --- Deployments ---
+
+  async function renderDeployments(el) {
+    const data = await api('deployments');
+    const items = (data.items || []).sort((a, b) =>
+      (b.spec?.startedAt || '').localeCompare(a.spec?.startedAt || '')
+    );
+
+    el.innerHTML = `
+      <div class="page-header">
+        <h2>Deployments</h2>
+        <p>${items.length} deployment${items.length !== 1 ? 's' : ''} recorded</p>
+      </div>
+      ${items.length ? `<div class="table-container"><table>
+        <thead><tr><th>Name</th><th>Application</th><th>Status</th><th>Resources</th><th>Started</th><th>Duration</th></tr></thead>
+        <tbody>${items.map(dep => {
+          const s = dep.spec || {};
+          const started = s.startedAt ? new Date(s.startedAt) : null;
+          const finished = s.finishedAt ? new Date(s.finishedAt) : null;
+          const duration = started && finished ? formatDuration(finished - started) : '-';
+          const timeAgo = started ? formatTimeAgo(started) : '-';
+          return `<tr style="cursor:pointer" onclick="location.hash='#/deployments/${dep.metadata.name}'">
+            <td><strong>${esc(dep.metadata.name)}</strong></td>
+            <td><a href="#/applications/${s.application}" style="color:var(--accent);text-decoration:none">${esc(s.application)}</a></td>
+            <td>${phaseBadge(s.phase)}</td>
+            <td>${(s.resources || []).length}</td>
+            <td title="${started ? started.toISOString() : ''}">${esc(timeAgo)}</td>
+            <td>${esc(duration)}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>` :
+        '<div class="empty-state"><div class="empty-state-icon">&#128640;</div><h3>No deployments yet</h3><p>Deploy an Application to see deployment history here.</p></div>'}
+    `;
+  }
+
+  async function renderDeploymentDetail(el, params) {
+    const dep = await apiGet('deployments', params.name);
+    if (!dep) {
+      el.innerHTML = `${backLink('#/deployments', 'Deployments')}<div class="empty-state"><h3>Deployment not found</h3></div>`;
+      return;
+    }
+
+    const s = dep.spec || {};
+    const started = s.startedAt ? new Date(s.startedAt) : null;
+    const finished = s.finishedAt ? new Date(s.finishedAt) : null;
+    const duration = started && finished ? formatDuration(finished - started) : '-';
+    const isSuccess = s.phase === 'Provisioned';
+    const levels = s.levels || [];
+    const resources = s.resources || [];
+    const assignments = s.assignments || {};
+
+    el.innerHTML = `
+      ${backLink('#/deployments', 'Deployments')}
+      <div class="detail-header">
+        <div>
+          <div class="detail-title">${esc(dep.metadata.name)}</div>
+          <div class="detail-meta">
+            Application: <a href="#/applications/${s.application}" style="color:var(--accent);text-decoration:none">${esc(s.application)}</a>
+          </div>
+        </div>
+        ${phaseBadge(s.phase)}
+      </div>
+
+      <div class="detail-section">
+        <h3>Summary</h3>
+        ${kvGrid([
+          ['Status', phaseBadge(s.phase)],
+          ['Started', started ? started.toLocaleString() : '-'],
+          ['Finished', finished ? finished.toLocaleString() : '-'],
+          ['Duration', esc(duration)],
+          ['Resources', String(resources.length)],
+        ])}
+        ${s.error ? `<div style="margin-top:14px;background:var(--danger-bg);padding:12px;border-radius:var(--radius-md);border:1px solid rgba(239,68,68,0.3)">
+          <strong style="color:var(--danger)">Error:</strong>
+          <pre style="margin-top:6px;color:var(--text-secondary);font-size:13px;white-space:pre-wrap">${esc(s.error)}</pre>
+        </div>` : ''}
+      </div>
+
+      ${levels.length ? `<div class="detail-section">
+        <h3>Execution Order</h3>
+        <div class="dag-container">
+          <div class="dag-levels">
+            ${levels.map((level, i) => {
+              const nodes = '<div class="dag-level">' + level.map(name => {
+                const rs = resources.find(r => r.name === name);
+                const phase = rs?.phase || 'Pending';
+                const nodeColor = phase === 'Provisioned' ? 'var(--success)' : phase === 'Failed' ? 'var(--danger)' : 'var(--border)';
+                return '<div class="dag-node" style="border-color:' + nodeColor + '">' +
+                  '<div class="dag-node-name">' + esc(name) + '</div>' +
+                  '<div class="dag-node-type">' + esc(assignments[name] || '') + '</div>' +
+                  phaseBadge(phase) +
+                '</div>';
+              }).join('') + '</div>';
+              const arrow = i < levels.length - 1 ? '<div class="dag-arrow">&#x25BC;</div>' : '';
+              return nodes + arrow;
+            }).join('')}
+          </div>
+        </div>
+      </div>` : ''}
+
+      ${resources.length ? `<div class="detail-section">
+        <h3>Resources</h3>
+        <div class="table-container"><table>
+          <thead><tr><th>Name</th><th>Environment</th><th>Status</th><th>Outputs</th></tr></thead>
+          <tbody>${resources.map(r => `
+            <tr>
+              <td><span class="resource-name">${esc(r.name)}</span></td>
+              <td>${r.environment ? badge(r.environment, 'info') : '-'}</td>
+              <td>${phaseBadge(r.phase)}</td>
+              <td>${r.outputs && Object.keys(r.outputs).length ? '<code style="font-size:12px">' + esc(JSON.stringify(r.outputs)) + '</code>' : r.error ? '<span style="color:var(--danger);font-size:12px">' + esc(r.error) + '</span>' : '-'}</td>
+            </tr>
+          `).join('')}</tbody>
+        </table></div>
+      </div>` : ''}
+    `;
+  }
+
+  function formatDuration(ms) {
+    if (ms < 1000) return ms + 'ms';
+    const secs = Math.floor(ms / 1000);
+    if (secs < 60) return secs + 's';
+    const mins = Math.floor(secs / 60);
+    return mins + 'm ' + (secs % 60) + 's';
+  }
+
+  function formatTimeAgo(date) {
+    const diff = Date.now() - date.getTime();
+    const secs = Math.floor(diff / 1000);
+    if (secs < 60) return 'just now';
+    const mins = Math.floor(secs / 60);
+    if (mins < 60) return mins + 'm ago';
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return hours + 'h ago';
+    const days = Math.floor(hours / 24);
+    return days + 'd ago';
   }
 
   // --- Policies ---

@@ -17,6 +17,7 @@ var registry = map[string]reflect.Type{
 	key(v1alpha1.GroupVersion, v1alpha1.KindResourceType):    reflect.TypeOf(v1alpha1.ResourceType{}),
 	key(v1alpha1.GroupVersion, v1alpha1.KindRecipe):          reflect.TypeOf(v1alpha1.Recipe{}),
 	key(v1alpha1.GroupVersion, v1alpha1.KindPlacementPolicy): reflect.TypeOf(v1alpha1.PlacementPolicy{}),
+	key(v1alpha1.GroupVersion, v1alpha1.KindDeployment):      reflect.TypeOf(v1alpha1.Deployment{}),
 }
 
 func key(apiVersion, kind string) string {

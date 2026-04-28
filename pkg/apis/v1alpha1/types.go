@@ -199,3 +199,32 @@ type MatchCriteria struct {
 	ResourceTypes []string          `json:"resourceTypes,omitempty" yaml:"resourceTypes,omitempty"`
 	All           bool              `json:"all,omitempty" yaml:"all,omitempty"`
 }
+
+// Deployment records a single deployment of an Application.
+type Deployment struct {
+	meta.TypeMeta `json:",inline" yaml:",inline"`
+	Metadata      meta.ObjectMeta `json:"metadata" yaml:"metadata"`
+	Spec          DeploymentSpec  `json:"spec" yaml:"spec"`
+}
+
+func (d *Deployment) GetTypeMeta() meta.TypeMeta   { return d.TypeMeta }
+func (d *Deployment) GetObjectMeta() meta.ObjectMeta { return d.Metadata }
+
+type DeploymentSpec struct {
+	Application string                    `json:"application" yaml:"application"`
+	Phase       string                    `json:"phase" yaml:"phase"`
+	StartedAt   string                    `json:"startedAt" yaml:"startedAt"`
+	FinishedAt  string                    `json:"finishedAt,omitempty" yaml:"finishedAt,omitempty"`
+	Assignments map[string]string         `json:"assignments,omitempty" yaml:"assignments,omitempty"`
+	Levels      [][]string                `json:"levels,omitempty" yaml:"levels,omitempty"`
+	Resources   []DeploymentResourceStatus `json:"resources,omitempty" yaml:"resources,omitempty"`
+	Error       string                    `json:"error,omitempty" yaml:"error,omitempty"`
+}
+
+type DeploymentResourceStatus struct {
+	Name        string         `json:"name" yaml:"name"`
+	Phase       string         `json:"phase" yaml:"phase"`
+	Environment string         `json:"environment,omitempty" yaml:"environment,omitempty"`
+	Outputs     map[string]any `json:"outputs,omitempty" yaml:"outputs,omitempty"`
+	Error       string         `json:"error,omitempty" yaml:"error,omitempty"`
+}

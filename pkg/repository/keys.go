@@ -18,3 +18,6 @@ func RecipePrefix() string                  { return fmt.Sprintf("%s/recipes/", 
 
 func PlacementPolicyKey(name string) string { return fmt.Sprintf("%s/placementpolicies/%s", registryPrefix, name) }
 func PlacementPolicyPrefix() string         { return fmt.Sprintf("%s/placementpolicies/", registryPrefix) }
+
+func DeploymentKey(name string) string { return fmt.Sprintf("%s/deployments/%s", registryPrefix, name) }
+func DeploymentPrefix() string         { return fmt.Sprintf("%s/deployments/", registryPrefix) }

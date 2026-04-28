@@ -10,4 +10,5 @@ const (
 	KindResourceType    = "ResourceType"
 	KindRecipe          = "Recipe"
 	KindPlacementPolicy = "PlacementPolicy"
+	KindDeployment      = "Deployment"
 )

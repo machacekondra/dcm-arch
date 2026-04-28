@@ -49,6 +49,10 @@ func RegisterRoutes(mux *http.ServeMux, s store.Store) {
 		func(pp *v1alpha1.PlacementPolicy) error { return validation.ValidatePlacementPolicy(pp).Error() },
 	))
 
+	// Deployments (read-only via CRUD — created by deploy handler)
+	deployRepo := repository.New[*v1alpha1.Deployment](s, repository.DeploymentKey, repository.DeploymentPrefix())
+	registerHandlers(mux, "deployments", NewHandler(deployRepo, v1alpha1.KindDeployment))
+
 	// Placement simulation endpoint
 	placer, _ := placement.NewEngine()
 	ph := &PlacementHandler{appRepo: appRepo, envRepo: envRepo, policyRepo: policyRepo, engine: placer}
@@ -57,7 +61,7 @@ func RegisterRoutes(mux *http.ServeMux, s store.Store) {
 	// Deploy endpoint (placement + execution with mock driver)
 	mockDriver := engine.NewMockDriver()
 	executor := engine.NewExecutor(map[string]engine.Driver{"mock": mockDriver})
-	dh := &DeployHandler{appRepo: appRepo, envRepo: envRepo, policyRepo: policyRepo, placer: placer, executor: executor}
+	dh := &DeployHandler{appRepo: appRepo, envRepo: envRepo, policyRepo: policyRepo, deployRepo: deployRepo, placer: placer, executor: executor}
 	mux.HandleFunc("POST "+basePath+"/deploy/{name}", dh.deploy)
 }
 
