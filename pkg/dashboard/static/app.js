@@ -288,22 +288,20 @@ spec:
 apiVersion: dcm.io/v1alpha1
 kind: Recipe
 metadata:
-  name: pg-ansible-baremetal
+  name: compute-container-ansible-k8s
   labels:
-    resourceType: database.postgresql
+    resourceType: compute.container
 spec:
-  resourceType: database.postgresql
+  resourceType: compute.container
   resourceTypeVersion: ">=1.0.0"
   type: ansible
   source:
-    repository: "https://git.example.com/playbooks.git"
-    playbook: "postgresql/provision.yml"
-    version: "v1.0.0"
+    playbook: "playbooks/compute.container/provision.yml"
+    destroyPlaybook: "playbooks/compute.container/destroy.yml"
   environmentMatch:
     types:
-      - bare-metal
-  parameters:
-    backup_retention_period: 7`;
+      - kubernetes
+      - openshift`;
 
   const TMPL_POLICY = `
 apiVersion: dcm.io/v1alpha1

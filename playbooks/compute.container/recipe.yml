@@ -1,0 +1,22 @@
+# Sample DCM Recipe resource that uses this playbook.
+# Apply via: curl -X POST http://localhost:8080/apis/dcm.io/v1alpha1/recipes \
+#   -H "Content-Type: application/yaml" -d @playbooks/compute.container/recipe.yml
+
+apiVersion: dcm.io/v1alpha1
+kind: Recipe
+metadata:
+  name: compute-container-ansible-k8s
+  labels:
+    resourceType: compute.container
+    driver: ansible
+spec:
+  resourceType: compute.container
+  resourceTypeVersion: ">=1.0.0"
+  type: ansible
+  source:
+    playbook: "playbooks/compute.container/provision.yml"
+    destroyPlaybook: "playbooks/compute.container/destroy.yml"
+  environmentMatch:
+    types:
+      - kubernetes
+      - openshift

@@ -1,0 +1,141 @@
+---
+- name: DCM - Provision Container on Kubernetes
+  hosts: localhost
+  gather_facts: false
+  connection: local
+
+  vars:
+    # DCM context (injected automatically)
+    resource_name: "{{ dcm_context.resource.name }}"
+    app_name: "{{ dcm_context.application.name }}"
+    env_name: "{{ dcm_context.environment.name }}"
+    namespace: "{{ namespace | default('dcm-' + app_name) }}"
+
+    # Developer properties
+    container_image: "{{ image }}"
+    container_ports: "{{ ports | default([]) }}"
+    replicas: "{{ replicas | default(1) }}"
+    cpu_request: "{{ cpu | default('100m') }}"
+    memory_request: "{{ memory | default('128Mi') }}"
+    cpu_limit: "{{ cpuLimit | default('500m') }}"
+    memory_limit: "{{ memoryLimit | default('512Mi') }}"
+    env_vars: "{{ env | default({}) }}"
+
+  tasks:
+    - name: Ensure namespace exists
+      kubernetes.core.k8s:
+        api_version: v1
+        kind: Namespace
+        name: "{{ namespace }}"
+        state: present
+
+    - name: Build environment variables list
+      ansible.builtin.set_fact:
+        container_env: >-
+          {{
+            (env_vars | dict2items | map('combine', {})
+            | map('dict2items') | list
+            | map('first') | list
+            | map('combine', {})
+            | list)
+            if env_vars | length > 0 else []
+          }}
+
+    - name: Deploy container
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: "{{ resource_name }}"
+            namespace: "{{ namespace }}"
+            labels:
+              app.kubernetes.io/name: "{{ resource_name }}"
+              app.kubernetes.io/part-of: "{{ app_name }}"
+              app.kubernetes.io/managed-by: dcm
+          spec:
+            replicas: "{{ replicas | int }}"
+            selector:
+              matchLabels:
+                app.kubernetes.io/name: "{{ resource_name }}"
+            template:
+              metadata:
+                labels:
+                  app.kubernetes.io/name: "{{ resource_name }}"
+                  app.kubernetes.io/part-of: "{{ app_name }}"
+              spec:
+                containers:
+                  - name: "{{ resource_name }}"
+                    image: "{{ container_image }}"
+                    ports: >-
+                      {{
+                        container_ports | map('regex_replace', '^(\d+):(\d+)$', '{"containerPort": \2, "protocol": "TCP"}')
+                        | map('from_json') | list
+                        if container_ports | length > 0 else []
+                      }}
+                    env: >-
+                      {{
+                        env_vars | dict2items
+                        | map(attribute='key')
+                        | zip(env_vars | dict2items | map(attribute='value'))
+                        | map('list')
+                        | map('community.general.dict_kw', keys=['name', 'value'])
+                        | list
+                        if env_vars | length > 0 else []
+                      }}
+                    resources:
+                      requests:
+                        cpu: "{{ cpu_request }}"
+                        memory: "{{ memory_request }}"
+                      limits:
+                        cpu: "{{ cpu_limit }}"
+                        memory: "{{ memory_limit }}"
+
+    - name: Create Service
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: "{{ resource_name }}"
+            namespace: "{{ namespace }}"
+            labels:
+              app.kubernetes.io/name: "{{ resource_name }}"
+              app.kubernetes.io/managed-by: dcm
+          spec:
+            selector:
+              app.kubernetes.io/name: "{{ resource_name }}"
+            ports: >-
+              {{
+                container_ports | map('regex_replace', '^(\d+):(\d+)$', '{"port": \1, "targetPort": \2, "protocol": "TCP"}')
+                | map('from_json') | list
+                if container_ports | length > 0
+                else [{"port": 80, "targetPort": 80, "protocol": "TCP"}]
+              }}
+      register: svc_result
+
+    - name: Wait for deployment rollout
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        name: "{{ resource_name }}"
+        namespace: "{{ namespace }}"
+      register: deploy_status
+      until: >-
+        deploy_status.resources[0].status.readyReplicas | default(0) | int
+        >= replicas | int
+      retries: 30
+      delay: 10
+
+    - name: Set DCM result
+      ansible.builtin.set_fact:
+        result:
+          values:
+            host: "{{ resource_name }}.{{ namespace }}.svc.cluster.local"
+            port: "{{ container_ports[0].split(':')[0] | default('80') }}"
+            internalUrl: "http://{{ resource_name }}.{{ namespace }}.svc.cluster.local:{{ container_ports[0].split(':')[0] | default('80') }}"
+            namespace: "{{ namespace }}"
+            deployment: "{{ resource_name }}"
+          secrets: {}

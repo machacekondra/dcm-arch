@@ -1,0 +1,46 @@
+---
+- name: DCM - Destroy Container on Kubernetes
+  hosts: localhost
+  gather_facts: false
+  connection: local
+
+  vars:
+    resource_name: "{{ dcm_context.resource.name }}"
+    app_name: "{{ dcm_context.application.name }}"
+    namespace: "{{ namespace | default('dcm-' + app_name) }}"
+
+  tasks:
+    - name: Delete Service
+      kubernetes.core.k8s:
+        api_version: v1
+        kind: Service
+        name: "{{ resource_name }}"
+        namespace: "{{ namespace }}"
+        state: absent
+
+    - name: Delete Deployment
+      kubernetes.core.k8s:
+        api_version: apps/v1
+        kind: Deployment
+        name: "{{ resource_name }}"
+        namespace: "{{ namespace }}"
+        state: absent
+
+    - name: Wait for pods to terminate
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Pod
+        namespace: "{{ namespace }}"
+        label_selectors:
+          - "app.kubernetes.io/name={{ resource_name }}"
+      register: pods
+      until: pods.resources | length == 0
+      retries: 30
+      delay: 5
+
+    - name: Set DCM result
+      ansible.builtin.set_fact:
+        result:
+          values:
+            status: deleted
+          secrets: {}
