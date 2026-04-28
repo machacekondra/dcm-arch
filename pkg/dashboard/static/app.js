@@ -48,6 +48,21 @@
     }
   }
 
+  async function apiUpdate(resource, name, yamlBody, revision) {
+    const resp = await fetch(`${API}/${resource}/${name}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/yaml', 'X-DCM-Revision': String(revision) },
+      body: yamlBody,
+    });
+    const body = await resp.text();
+    if (!resp.ok) {
+      let msg = body;
+      try { msg = JSON.parse(body).error; } catch(_) {}
+      throw new Error(msg);
+    }
+    return { revision: resp.headers.get('X-DCM-Revision') };
+  }
+
   // --- Modal ---
 
   function showCreateModal(title, yamlTemplate, resource, onSuccess) {
@@ -146,6 +161,74 @@
         deleteBtn.textContent = 'Delete';
       }
     };
+  }
+
+  function showEditModal(title, resource, name, revision, onSuccess) {
+    // Fetch current YAML
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal">
+        <div class="modal-header">
+          <h3>${esc(title)}</h3>
+          <button class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="loading"><div class="spinner"></div>Loading...</div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+    overlay.querySelector('.modal-close').onclick = close;
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+    // Fetch current object as YAML
+    fetch(`${API}/${resource}/${name}`, { headers: { 'Accept': 'application/yaml' } })
+      .then(resp => {
+        revision = resp.headers.get('X-DCM-Revision') || revision;
+        return resp.text();
+      })
+      .then(yaml => {
+        const body = overlay.querySelector('.modal-body');
+        body.innerHTML = `
+          <textarea class="modal-editor" spellcheck="false">${esc(yaml)}</textarea>
+          <div class="modal-error" style="display:none"></div>
+        `;
+
+        // Add footer
+        const footer = document.createElement('div');
+        footer.className = 'modal-footer';
+        footer.innerHTML = `
+          <button class="modal-btn modal-btn-cancel">Cancel</button>
+          <button class="modal-btn modal-btn-create">Save</button>
+        `;
+        overlay.querySelector('.modal').appendChild(footer);
+
+        footer.querySelector('.modal-btn-cancel').onclick = close;
+        const editor = body.querySelector('.modal-editor');
+        const errorEl = body.querySelector('.modal-error');
+        const saveBtn = footer.querySelector('.modal-btn-create');
+
+        saveBtn.onclick = async () => {
+          errorEl.style.display = 'none';
+          saveBtn.disabled = true;
+          saveBtn.textContent = 'Saving...';
+          try {
+            await apiUpdate(resource, name, editor.value, revision);
+            close();
+            if (onSuccess) onSuccess();
+          } catch (err) {
+            errorEl.textContent = err.message;
+            errorEl.style.display = 'block';
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save';
+          }
+        };
+
+        setTimeout(() => editor.focus(), 100);
+      });
   }
 
   // --- Router ---
@@ -718,7 +801,11 @@ spec:
           <div class="detail-title">${esc(env.metadata.name)}</div>
           <div class="detail-meta">${esc(s.description || s.type)}</div>
         </div>
-        ${typeBadge(s.type)}
+        <div style="display:flex;gap:10px;align-items:center">
+          ${typeBadge(s.type)}
+          <button class="edit-btn" id="edit-env-btn">Edit</button>
+          <button class="delete-btn" id="delete-env-btn">Delete</button>
+        </div>
       </div>
 
       ${env.metadata.labels ? `<div class="detail-section"><h3>Labels</h3>${tags(env.metadata.labels)}</div>` : ''}
@@ -779,6 +866,11 @@ spec:
         </table></div>
       </div>` : ''}
     `;
+
+    $('#edit-env-btn', el).onclick = () =>
+      showEditModal('Edit Environment', 'environments', env.metadata.name, env._revision, () => navigate());
+    $('#delete-env-btn', el).onclick = () =>
+      showDeleteConfirm('Environment', env.metadata.name, 'environments', env._revision, '#/environments');
   }
 
   // --- Resource Types ---
