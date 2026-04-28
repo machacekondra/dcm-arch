@@ -28,60 +28,12 @@
     - name: Deploy container
       kubernetes.core.k8s:
         state: present
-        resource_definition:
-          apiVersion: apps/v1
-          kind: Deployment
-          metadata:
-            name: "{{ _resource_name }}"
-            namespace: "{{ _namespace }}"
-            labels:
-              app.kubernetes.io/name: "{{ _resource_name }}"
-              app.kubernetes.io/part-of: "{{ _app_name }}"
-              app.kubernetes.io/managed-by: dcm
-          spec:
-            replicas: {{ _replicas | int }}
-            selector:
-              matchLabels:
-                app.kubernetes.io/name: "{{ _resource_name }}"
-            template:
-              metadata:
-                labels:
-                  app.kubernetes.io/name: "{{ _resource_name }}"
-                  app.kubernetes.io/part-of: "{{ _app_name }}"
-              spec:
-                containers:
-                  - name: "{{ _resource_name }}"
-                    image: "{{ _image }}"
-                    ports:
-                      - containerPort: {{ _port | int }}
-                        protocol: TCP
-                    resources:
-                      requests:
-                        cpu: "{{ _cpu_request }}"
-                        memory: "{{ _memory_request }}"
-                      limits:
-                        cpu: "{{ _cpu_limit }}"
-                        memory: "{{ _memory_limit }}"
+        template: "{{ playbook_dir }}/templates/deployment.yml.j2"
 
     - name: Create Service
       kubernetes.core.k8s:
         state: present
-        resource_definition:
-          apiVersion: v1
-          kind: Service
-          metadata:
-            name: "{{ _resource_name }}"
-            namespace: "{{ _namespace }}"
-            labels:
-              app.kubernetes.io/name: "{{ _resource_name }}"
-              app.kubernetes.io/managed-by: dcm
-          spec:
-            selector:
-              app.kubernetes.io/name: "{{ _resource_name }}"
-            ports:
-              - port: {{ _port | int }}
-                targetPort: {{ _port | int }}
-                protocol: TCP
+        template: "{{ playbook_dir }}/templates/service.yml.j2"
 
     - name: Wait for deployment rollout
       kubernetes.core.k8s_info:

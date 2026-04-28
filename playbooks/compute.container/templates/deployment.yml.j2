@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ _resource_name }}
+  namespace: {{ _namespace }}
+  labels:
+    app.kubernetes.io/name: {{ _resource_name }}
+    app.kubernetes.io/part-of: {{ _app_name }}
+    app.kubernetes.io/managed-by: dcm
+spec:
+  replicas: {{ _replicas | int }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ _resource_name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ _resource_name }}
+        app.kubernetes.io/part-of: {{ _app_name }}
+    spec:
+      containers:
+        - name: {{ _resource_name }}
+          image: {{ _image }}
+          ports:
+            - containerPort: {{ _port | int }}
+              protocol: TCP
+          resources:
+            requests:
+              cpu: {{ _cpu_request }}
+              memory: {{ _memory_request }}
+            limits:
+              cpu: {{ _cpu_limit }}
+              memory: {{ _memory_limit }}

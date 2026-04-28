@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ _resource_name }}
+  namespace: {{ _namespace }}
+  labels:
+    app.kubernetes.io/name: {{ _resource_name }}
+    app.kubernetes.io/managed-by: dcm
+spec:
+  selector:
+    app.kubernetes.io/name: {{ _resource_name }}
+  ports:
+    - port: {{ _port | int }}
+      targetPort: {{ _port | int }}
+      protocol: TCP
